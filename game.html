@@ -32,23 +32,48 @@
 
         h1 {
             margin-top: 0;
+            margin-bottom: 10px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }
 
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            background: rgba(0,0,0,0.3);
+            padding: 15px 25px;
+            border-radius: 12px;
+            backdrop-filter: blur(5px);
+            align-items: center;
+        }
+
+        select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: none;
+            font-size: 1rem;
+            outline: none;
+            cursor: pointer;
+            background: white;
+            color: #333;
+        }
+
         #status {
-            font-size: 1.5rem;
+            font-size: 1.3rem;
             font-weight: bold;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             padding: 10px 20px;
             border-radius: 30px;
             background: rgba(0,0,0,0.2);
             transition: all 0.3s ease;
+            text-align: center;
+            min-width: 300px;
         }
 
         .p1-turn { color: var(--p1-color); text-shadow: 1px 1px 2px #000; }
         .p2-turn { color: var(--p2-color); text-shadow: 1px 1px 2px #000; }
+        .ai-turn { color: #f1c40f; text-shadow: 1px 1px 2px #000; }
 
-        /* 11x11 Grid to accommodate labels and cells */
         #game-board {
             display: grid;
             grid-template-columns: 40px repeat(10, 50px);
@@ -96,24 +121,20 @@
         }
 
         #reset-btn {
-            margin-top: 20px;
-            padding: 10px 20px;
-            font-size: 1.1rem;
+            padding: 8px 20px;
+            font-size: 1rem;
             font-weight: bold;
             border: none;
             border-radius: 25px;
-            background: white;
+            background: #f1c40f;
             color: #333;
             cursor: pointer;
             box-shadow: 0 4px 6px rgba(0,0,0,0.2);
             transition: transform 0.1s;
         }
 
-        #reset-btn:active {
-            transform: translateY(2px);
-        }
+        #reset-btn:active { transform: translateY(2px); }
 
-        /* Modal Styles */
         #modal-overlay {
             display: none;
             position: fixed;
@@ -156,10 +177,6 @@
             outline: none;
         }
 
-        #answer-input:focus {
-            border-color: #764ba2;
-        }
-
         #submit-btn {
             display: block;
             margin: 20px auto 0;
@@ -172,23 +189,19 @@
             cursor: pointer;
         }
 
-        .win-line {
-            animation: pulse 1s infinite alternate;
-        }
+        .win-line { animation: pulse 1s infinite alternate; }
 
         @keyframes pulse {
             from { filter: brightness(1); }
             to { filter: brightness(1.5); box-shadow: 0 0 15px white; }
         }
 
-        /* NEW: Shake animation for invalid moves */
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
             25% { transform: translateX(-5px); }
             50% { transform: translateX(5px); }
             75% { transform: translateX(-5px); }
         }
-
         .shake {
             animation: shake 0.3s ease-in-out;
             background: rgba(255, 0, 0, 0.4) !important;
@@ -198,13 +211,25 @@
 <body>
 
     <h1>Math Connect Four</h1>
-    <div id="status" class="p1-turn">Player 1's Turn (Red)</div>
 
+    <div class="controls">
+        <select id="game-mode" onchange="toggleDifficulty(); initGame();">
+            <option value="pve">1 Player (vs Computer)</option>
+            <option value="pvp">2 Players</option>
+        </select>
+        <select id="difficulty-level" onchange="initGame();">
+            <option value="1">Level 1 (Silly)</option>
+            <option value="2">Level 2 (Easy)</option>
+            <option value="3" selected>Level 3 (Medium)</option>
+            <option value="4">Level 4 (Hard)</option>
+            <option value="5">Level 5 (Expert)</option>
+        </select>
+        <button id="reset-btn" onclick="initGame()">Restart Game</button>
+    </div>
+
+    <div id="status" class="p1-turn">Player 1's Turn (Red)</div>
     <div id="game-board"></div>
 
-    <button id="reset-btn" onclick="initGame()">Restart Game</button>
-
-    <!-- Question Modal -->
     <div id="modal-overlay">
         <div id="modal">
             <div id="question-text">What is 5 x 6?</div>
@@ -220,6 +245,7 @@
         let currentPlayer = 1;
         let gameActive = true;
         let pendingMove = null;
+        let isAILocked = false;
 
         const boardEl = document.getElementById('game-board');
         const statusEl = document.getElementById('status');
@@ -227,23 +253,29 @@
         const questionText = document.getElementById('question-text');
         const answerInput = document.getElementById('answer-input');
         const submitBtn = document.getElementById('submit-btn');
+        const modeSelect = document.getElementById('game-mode');
+        const difficultySelect = document.getElementById('difficulty-level');
+
+        function toggleDifficulty() {
+            difficultySelect.style.display = modeSelect.value === 'pve' ? 'inline-block' : 'none';
+        }
 
         function initGame() {
             boardEl.innerHTML = '';
             board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
             currentPlayer = 1;
             gameActive = true;
+            isAILocked = false;
+            pendingMove = null;
+            modalOverlay.style.display = 'none';
             updateStatus();
 
-            // Build grid top to bottom (Row 10 down to 1)
             for (let r = ROWS - 1; r >= 0; r--) {
-                // Y-axis label
                 const rowLabel = document.createElement('div');
                 rowLabel.className = 'label';
                 rowLabel.textContent = r + 1;
                 boardEl.appendChild(rowLabel);
 
-                // Cells for this row
                 for (let c = 0; c < COLS; c++) {
                     const cell = document.createElement('div');
                     cell.className = 'cell';
@@ -254,11 +286,7 @@
                 }
             }
 
-            // Bottom-left empty corner
-            const corner = document.createElement('div');
-            boardEl.appendChild(corner);
-
-            // X-axis labels
+            boardEl.appendChild(document.createElement('div'));
             for (let c = 0; c < COLS; c++) {
                 const colLabel = document.createElement('div');
                 colLabel.className = 'label';
@@ -267,30 +295,39 @@
             }
         }
 
-        function updateStatus() {
+        function updateStatus(customMessage = null) {
             if (!gameActive) return;
+            if (customMessage) {
+                statusEl.textContent = customMessage;
+                return;
+            }
+
             const colorName = currentPlayer === 1 ? 'Red' : 'Green';
-            statusEl.textContent = `Player ${currentPlayer}'s Turn (${colorName})`;
-            statusEl.className = currentPlayer === 1 ? 'p1-turn' : 'p2-turn';
+            if (modeSelect.value === 'pve' && currentPlayer === 2) {
+                statusEl.textContent = "Computer is thinking...";
+                statusEl.className = 'ai-turn';
+            } else {
+                statusEl.textContent = `Player ${currentPlayer}'s Turn (${colorName})`;
+                statusEl.className = currentPlayer === 1 ? 'p1-turn' : 'p2-turn';
+            }
         }
 
         function handleCellClick(r, c) {
-            if (!gameActive || board[r][c] !== 0) return;
+            if (!gameActive || isAILocked || board[r][c] !== 0) return;
 
-            // NEW: Gravity Check
-            // If it's not the bottom row (r > 0) AND the cell directly beneath it (r - 1) is empty (=== 0)
+            // Gravity Check
             if (r > 0 && board[r - 1][c] === 0) {
                 const cellEl = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
                 cellEl.classList.add('shake');
                 setTimeout(() => cellEl.classList.remove('shake'), 300);
-                return; // Stop the click from registering
+                return;
             }
 
             pendingMove = { r, c };
             const factor1 = c + 1;
             const factor2 = r + 1;
 
-            questionText.textContent = `Player ${currentPlayer}: What is ${factor2} x ${factor1}?`;
+            questionText.textContent = `Player ${currentPlayer}: What is ${factor1} x ${factor2}?`;
             answerInput.value = '';
             modalOverlay.style.display = 'flex';
             answerInput.focus();
@@ -308,26 +345,40 @@
             modalOverlay.style.display = 'none';
 
             if (userAnswer === correctAnswer) {
-                // Correct: place token
-                board[r][c] = currentPlayer;
-                const cellEl = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
-                cellEl.classList.add('taken', currentPlayer === 1 ? 'p1' : 'p2');
-
-                if (checkWin(r, c)) {
-                    gameActive = false;
-                    statusEl.textContent = `Player ${currentPlayer} Wins!`;
-                    statusEl.className = currentPlayer === 1 ? 'p1-turn' : 'p2-turn';
-                    return;
-                }
+                placePiece(r, c, currentPlayer);
             } else {
-                // Incorrect: notify and lose turn
                 alert(`Incorrect! ${factor1} x ${factor2} = ${correctAnswer}. You lose your turn!`);
+                advanceTurn();
             }
-
-            // Switch turn
-            currentPlayer = currentPlayer === 1 ? 2 : 1;
-            updateStatus();
             pendingMove = null;
+        }
+
+        function placePiece(r, c, player) {
+            board[r][c] = player;
+            const cellEl = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+            cellEl.classList.add('taken', player === 1 ? 'p1' : 'p2');
+
+            if (checkWinDOM(r, c, player)) {
+                gameActive = false;
+                const winnerText = (modeSelect.value === 'pve' && player === 2) ? "Computer Wins!" : `Player ${player} Wins!`;
+                statusEl.textContent = winnerText;
+                statusEl.className = player === 1 ? 'p1-turn' : 'p2-turn';
+                return;
+            }
+            advanceTurn();
+        }
+
+        function advanceTurn() {
+            if(!gameActive) return;
+            currentPlayer = currentPlayer === 1 ? 2 : 1;
+
+            if (modeSelect.value === 'pve' && currentPlayer === 2) {
+                isAILocked = true;
+                updateStatus();
+                setTimeout(makeAIMove, 100); // Small delay so UI can render "Thinking"
+            } else {
+                updateStatus();
+            }
         }
 
         submitBtn.addEventListener('click', checkAnswer);
@@ -335,53 +386,216 @@
             if (e.key === 'Enter') checkAnswer();
         });
 
-        // Win checking logic (4 in a row)
-        function checkWin(r, c) {
-            const directions = [
-                [[0, 1], [0, -1]], // Horizontal
-                [[1, 0], [-1, 0]], // Vertical
-                [[1, 1], [-1, -1]], // Diagonal /
-                [[1, -1], [-1, 1]]  // Diagonal \
-            ];
-
-            const player = board[r][c];
-
+        // --- WIN CHECKING (DOM & UI) ---
+        function checkWinDOM(r, c, player) {
+            const directions = [ [[0, 1], [0, -1]], [[1, 0], [-1, 0]], [[1, 1], [-1, -1]], [[1, -1], [-1, 1]] ];
             for (let dir of directions) {
                 let count = 1;
                 let winningCells = [{r, c}];
-
                 for (let vector of dir) {
                     let step = 1;
                     while (true) {
                         const newR = r + (vector[0] * step);
                         const newC = c + (vector[1] * step);
-
                         if (newR >= 0 && newR < ROWS && newC >= 0 && newC < COLS && board[newR][newC] === player) {
                             count++;
                             winningCells.push({r: newR, c: newC});
                             step++;
-                        } else {
-                            break;
-                        }
+                        } else break;
                     }
                 }
-
                 if (count >= 4) {
-                    highlightWin(winningCells);
+                    winningCells.forEach(pos => document.querySelector(`.cell[data-r="${pos.r}"][data-c="${pos.c}"]`).classList.add('win-line'));
                     return true;
                 }
             }
             return false;
         }
 
-        function highlightWin(cells) {
-            cells.forEach(pos => {
-                const el = document.querySelector(`.cell[data-r="${pos.r}"][data-c="${pos.c}"]`);
-                el.classList.add('win-line');
-            });
+
+        // ==========================================
+        // AI LOGIC (MINIMAX)
+        // ==========================================
+
+        function makeAIMove() {
+            const level = parseInt(difficultySelect.value);
+            let bestCol;
+
+            // Level 1: Silly (Pure Random)
+            if (level === 1) {
+                const validCols = getValidCols(board);
+                bestCol = validCols[Math.floor(Math.random() * validCols.length)];
+            } else {
+                // Map levels 2-5 to Depth (2, 3, 4, 5)
+                const depth = level;
+                bestCol = minimax(board, depth, -Infinity, Infinity, true)[0];
+            }
+
+            const r = getNextOpenRow(board, bestCol);
+
+            // Educational touch: show math answer
+            const factor1 = bestCol + 1;
+            const factor2 = r + 1;
+            updateStatus(`Computer solved ${factor1} x ${factor2} = ${factor1 * factor2}!`);
+            statusEl.className = 'ai-turn';
+
+            setTimeout(() => {
+                placePiece(r, bestCol, 2);
+                isAILocked = false;
+            }, 1000); // 1 second delay so human can read the math
         }
 
-        // Start game on load
+        function getValidCols(b) {
+            let valid = [];
+            for (let c = 0; c < COLS; c++) {
+                if (b[ROWS - 1][c] === 0) valid.push(c);
+            }
+            return valid;
+        }
+
+        function getNextOpenRow(b, c) {
+            for (let r = 0; r < ROWS; r++) {
+                if (b[r][c] === 0) return r;
+            }
+            return -1;
+        }
+
+        function copyBoard(b) {
+            return b.map(row => [...row]);
+        }
+
+        function checkWinData(b, piece) {
+            for (let c = 0; c < COLS - 3; c++) {
+                for (let r = 0; r < ROWS; r++) {
+                    if (b[r][c] == piece && b[r][c+1] == piece && b[r][c+2] == piece && b[r][c+3] == piece) return true;
+                }
+            }
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < ROWS - 3; r++) {
+                    if (b[r][c] == piece && b[r+1][c] == piece && b[r+2][c] == piece && b[r+3][c] == piece) return true;
+                }
+            }
+            for (let c = 0; c < COLS - 3; c++) {
+                for (let r = 0; r < ROWS - 3; r++) {
+                    if (b[r][c] == piece && b[r+1][c+1] == piece && b[r+2][c+2] == piece && b[r+3][c+3] == piece) return true;
+                }
+            }
+            for (let c = 0; c < COLS - 3; c++) {
+                for (let r = 3; r < ROWS; r++) {
+                    if (b[r][c] == piece && b[r-1][c+1] == piece && b[r-2][c+2] == piece && b[r-3][c+3] == piece) return true;
+                }
+            }
+            return false;
+        }
+
+        function evaluateWindow(window, piece) {
+            let score = 0;
+            let oppPiece = piece === 1 ? 2 : 1;
+            let countPiece = window.filter(p => p === piece).length;
+            let countEmpty = window.filter(p => p === 0).length;
+            let countOpp = window.filter(p => p === oppPiece).length;
+
+            if (countPiece === 4) score += 100;
+            else if (countPiece === 3 && countEmpty === 1) score += 5;
+            else if (countPiece === 2 && countEmpty === 2) score += 2;
+
+            if (countOpp === 3 && countEmpty === 1) score -= 4;
+
+            return score;
+        }
+
+        function scorePosition(b, piece) {
+            let score = 0;
+            // Center preference
+            let centerArray = [];
+            for (let r = 0; r < ROWS; r++) centerArray.push(b[r][Math.floor(COLS/2)]);
+            score += centerArray.filter(p => p === piece).length * 3;
+
+            // Horizontal
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS - 3; c++) {
+                    let window = [b[r][c], b[r][c+1], b[r][c+2], b[r][c+3]];
+                    score += evaluateWindow(window, piece);
+                }
+            }
+            // Vertical
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < ROWS - 3; r++) {
+                    let window = [b[r][c], b[r+1][c], b[r+2][c], b[r+3][c]];
+                    score += evaluateWindow(window, piece);
+                }
+            }
+            // Diagonals
+            for (let r = 0; r < ROWS - 3; r++) {
+                for (let c = 0; c < COLS - 3; c++) {
+                    let window = [b[r][c], b[r+1][c+1], b[r+2][c+2], b[r+3][c+3]];
+                    score += evaluateWindow(window, piece);
+                }
+            }
+            for (let r = 3; r < ROWS; r++) {
+                for (let c = 0; c < COLS - 3; c++) {
+                    let window = [b[r][c], b[r-1][c+1], b[r-2][c+2], b[r-3][c+3]];
+                    score += evaluateWindow(window, piece);
+                }
+            }
+            return score;
+        }
+
+        function isTerminalNode(b) {
+            return checkWinData(b, 1) || checkWinData(b, 2) || getValidCols(b).length === 0;
+        }
+
+        function minimax(b, depth, alpha, beta, maximizingPlayer) {
+            let validCols = getValidCols(b);
+            let isTerminal = isTerminalNode(b);
+
+            if (depth === 0 || isTerminal) {
+                if (isTerminal) {
+                    if (checkWinData(b, 2)) return [null, 10000000];
+                    else if (checkWinData(b, 1)) return [null, -10000000];
+                    else return [null, 0];
+                } else {
+                    return [null, scorePosition(b, 2)];
+                }
+            }
+
+            if (maximizingPlayer) {
+                let value = -Infinity;
+                let column = validCols[Math.floor(Math.random() * validCols.length)];
+                for (let c of validCols) {
+                    let r = getNextOpenRow(b, c);
+                    let bCopy = copyBoard(b);
+                    bCopy[r][c] = 2;
+                    let newScore = minimax(bCopy, depth - 1, alpha, beta, false)[1];
+                    if (newScore > value) {
+                        value = newScore;
+                        column = c;
+                    }
+                    alpha = Math.max(alpha, value);
+                    if (alpha >= beta) break;
+                }
+                return [column, value];
+            } else {
+                let value = Infinity;
+                let column = validCols[Math.floor(Math.random() * validCols.length)];
+                for (let c of validCols) {
+                    let r = getNextOpenRow(b, c);
+                    let bCopy = copyBoard(b);
+                    bCopy[r][c] = 1;
+                    let newScore = minimax(bCopy, depth - 1, alpha, beta, true)[1];
+                    if (newScore < value) {
+                        value = newScore;
+                        column = c;
+                    }
+                    beta = Math.min(beta, value);
+                    if (alpha >= beta) break;
+                }
+                return [column, value];
+            }
+        }
+
+        // Initialize game
+        toggleDifficulty();
         initGame();
     </script>
 </body>
