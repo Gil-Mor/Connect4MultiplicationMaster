@@ -45,6 +45,8 @@
             border-radius: 12px;
             backdrop-filter: blur(5px);
             align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
         select {
@@ -219,10 +221,10 @@
         </select>
         <select id="difficulty-level" onchange="initGame();">
             <option value="1">Level 1 (Pure Random)</option>
-            <option value="2">Level 2 (Opportunist - Won't block)</option>
-            <option value="3" selected>Level 3 (Medium)</option>
-            <option value="4">Level 4 (Hard)</option>
-            <option value="5">Level 5 (Expert)</option>
+            <option value="2">Level 2 (Opportunist - Blocks Row 1 Traps)</option>
+            <option value="3" selected>Level 3 (Blocker - Stops obvious wins & traps)</option>
+            <option value="4">Level 4 (Hard - Thinks ahead)</option>
+            <option value="5">Level 5 (Expert - Grandmaster)</option>
         </select>
         <button id="reset-btn" onclick="initGame()">Restart Game</button>
     </div>
@@ -377,7 +379,7 @@
             if (modeSelect.value === 'pve' && currentPlayer === 2) {
                 isAILocked = true;
                 updateStatus();
-                setTimeout(makeAIMove, 100); // Small delay so UI can render "Thinking"
+                setTimeout(makeAIMove, 100);
             } else {
                 updateStatus();
             }
@@ -421,30 +423,77 @@
 
         function makeAIMove() {
             const level = parseInt(difficultySelect.value);
-            let bestCol;
+            let bestCol = null;
             const validCols = getValidCols(board);
 
             if (level === 1) {
                 // Level 1: Pure Random
                 bestCol = validCols[Math.floor(Math.random() * validCols.length)];
-            } else if (level === 2) {
-                // Level 2: Opportunist (Takes wins if available, otherwise random. Does not block).
-                bestCol = validCols[Math.floor(Math.random() * validCols.length)]; // Default random
-
+            } else {
+                // HIGHEST PRIORITY (Levels 2+): Can the AI win right now?
                 for (let c of validCols) {
                     let r = getNextOpenRow(board, c);
                     let bCopy = copyBoard(board);
                     bCopy[r][c] = 2; // AI piece
                     if (checkWinData(bCopy, 2)) {
-                        bestCol = c; // Found a win, take it!
+                        bestCol = c;
                         break;
                     }
                 }
-            } else {
-                // Levels 3, 4, 5 map to Depths 2, 4, 6
-                const depths = {3: 2, 4: 4, 5: 6};
-                const depth = depths[level];
-                bestCol = minimax(board, depth, -Infinity, Infinity, true)[0];
+
+                // SECOND PRIORITY (Levels 2+): Prevent Bottom-Row Traps
+                if (bestCol === null) {
+                    // Part A: Prevent immediate 4-in-a-row loss on the bottom row
+                    for (let c of validCols) {
+                        if (getNextOpenRow(board, c) === 0) {
+                            let bCopy = copyBoard(board);
+                            bCopy[0][c] = 1;
+                            if (checkWinData(bCopy, 1)) {
+                                bestCol = c;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Part B: Prevent the [Empty, Player, Player, Empty] open-ended trap
+                    if (bestCol === null) {
+                        for (let c = 0; c <= COLS - 4; c++) {
+                            // Check row 0 (the bottom row)
+                            if (board[0][c] === 0 && board[0][c+1] === 1 && board[0][c+2] === 1 && board[0][c+3] === 0) {
+                                // Block either the left or right side randomly
+                                bestCol = Math.random() < 0.5 ? c : c + 3;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // If no critical overrides were triggered, fall back to standard level behavior
+                if (bestCol === null) {
+                    if (level === 2) {
+                        // Opportunist
+                        bestCol = validCols[Math.floor(Math.random() * validCols.length)];
+                    } else if (level === 3) {
+                        // Blocker (General)
+                        for (let c of validCols) {
+                            let r = getNextOpenRow(board, c);
+                            let bCopy = copyBoard(board);
+                            bCopy[r][c] = 1;
+                            if (checkWinData(bCopy, 1)) {
+                                bestCol = c;
+                                break;
+                            }
+                        }
+                        if (bestCol === null) {
+                            bestCol = validCols[Math.floor(Math.random() * validCols.length)];
+                        }
+                    } else {
+                        // Levels 4, 5: Minimax
+                        const depths = {4: 4, 5: 6};
+                        const depth = depths[level];
+                        bestCol = minimax(board, depth, -Infinity, Infinity, true)[0];
+                    }
+                }
             }
 
             const r = getNextOpenRow(board, bestCol);
@@ -458,7 +507,7 @@
             setTimeout(() => {
                 placePiece(r, bestCol, 2);
                 isAILocked = false;
-            }, 1000); // 1 second delay so human can read the math
+            }, 1000);
         }
 
         function getValidCols(b) {
