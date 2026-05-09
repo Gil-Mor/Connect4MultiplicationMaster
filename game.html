@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math Connect Four</title>
+    <style>
+        :root {
+            --p1-color: #ff4757;
+            --p1-shadow: #c0392b;
+            --p2-color: #2ed573;
+            --p2-shadow: #27ae60;
+            --board-bg: rgba(255, 255, 255, 0.2);
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: white;
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-top: 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        #status {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            border-radius: 30px;
+            background: rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .p1-turn { color: var(--p1-color); text-shadow: 1px 1px 2px #000; }
+        .p2-turn { color: var(--p2-color); text-shadow: 1px 1px 2px #000; }
+
+        /* 11x11 Grid to accommodate labels and cells */
+        #game-board {
+            display: grid;
+            grid-template-columns: 40px repeat(10, 50px);
+            grid-template-rows: repeat(10, 50px) 40px;
+            gap: 5px;
+            background: var(--board-bg);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .label {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: #f1f2f6;
+        }
+
+        .cell {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: inset 0 3px 6px rgba(0,0,0,0.4);
+        }
+
+        .cell:hover:not(.taken) {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .cell.p1 {
+            background: var(--p1-color);
+            box-shadow: inset 0 -4px 0 var(--p1-shadow), 0 2px 4px rgba(0,0,0,0.5);
+            cursor: default;
+        }
+
+        .cell.p2 {
+            background: var(--p2-color);
+            box-shadow: inset 0 -4px 0 var(--p2-shadow), 0 2px 4px rgba(0,0,0,0.5);
+            cursor: default;
+        }
+
+        #reset-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 25px;
+            background: white;
+            color: #333;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: transform 0.1s;
+        }
+
+        #reset-btn:active {
+            transform: translateY(2px);
+        }
+
+        /* Modal Styles */
+        #modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(3px);
+            z-index: 10;
+        }
+
+        #modal {
+            background: white;
+            color: #333;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            animation: popIn 0.3s ease-out;
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        #question-text {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+
+        #answer-input {
+            font-size: 1.5rem;
+            padding: 10px;
+            width: 120px;
+            text-align: center;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            outline: none;
+        }
+
+        #answer-input:focus {
+            border-color: #764ba2;
+        }
+
+        #submit-btn {
+            display: block;
+            margin: 20px auto 0;
+            padding: 10px 30px;
+            font-size: 1.2rem;
+            background: #764ba2;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .win-line {
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { filter: brightness(1); }
+            to { filter: brightness(1.5); box-shadow: 0 0 15px white; }
+        }
+
+        /* NEW: Shake animation for invalid moves */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+        }
+
+        .shake {
+            animation: shake 0.3s ease-in-out;
+            background: rgba(255, 0, 0, 0.4) !important;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Math Connect Four</h1>
+    <div id="status" class="p1-turn">Player 1's Turn (Red)</div>
+
+    <div id="game-board"></div>
+
+    <button id="reset-btn" onclick="initGame()">Restart Game</button>
+
+    <!-- Question Modal -->
+    <div id="modal-overlay">
+        <div id="modal">
+            <div id="question-text">What is 5 x 6?</div>
+            <input type="number" id="answer-input" autocomplete="off">
+            <button id="submit-btn">Submit Answer</button>
+        </div>
+    </div>
+
+    <script>
+        const ROWS = 10;
+        const COLS = 10;
+        let board = [];
+        let currentPlayer = 1;
+        let gameActive = true;
+        let pendingMove = null;
+
+        const boardEl = document.getElementById('game-board');
+        const statusEl = document.getElementById('status');
+        const modalOverlay = document.getElementById('modal-overlay');
+        const questionText = document.getElementById('question-text');
+        const answerInput = document.getElementById('answer-input');
+        const submitBtn = document.getElementById('submit-btn');
+
+        function initGame() {
+            boardEl.innerHTML = '';
+            board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+            currentPlayer = 1;
+            gameActive = true;
+            updateStatus();
+
+            // Build grid top to bottom (Row 10 down to 1)
+            for (let r = ROWS - 1; r >= 0; r--) {
+                // Y-axis label
+                const rowLabel = document.createElement('div');
+                rowLabel.className = 'label';
+                rowLabel.textContent = r + 1;
+                boardEl.appendChild(rowLabel);
+
+                // Cells for this row
+                for (let c = 0; c < COLS; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    cell.addEventListener('click', () => handleCellClick(r, c));
+                    boardEl.appendChild(cell);
+                }
+            }
+
+            // Bottom-left empty corner
+            const corner = document.createElement('div');
+            boardEl.appendChild(corner);
+
+            // X-axis labels
+            for (let c = 0; c < COLS; c++) {
+                const colLabel = document.createElement('div');
+                colLabel.className = 'label';
+                colLabel.textContent = c + 1;
+                boardEl.appendChild(colLabel);
+            }
+        }
+
+        function updateStatus() {
+            if (!gameActive) return;
+            const colorName = currentPlayer === 1 ? 'Red' : 'Green';
+            statusEl.textContent = `Player ${currentPlayer}'s Turn (${colorName})`;
+            statusEl.className = currentPlayer === 1 ? 'p1-turn' : 'p2-turn';
+        }
+
+        function handleCellClick(r, c) {
+            if (!gameActive || board[r][c] !== 0) return;
+
+            // NEW: Gravity Check
+            // If it's not the bottom row (r > 0) AND the cell directly beneath it (r - 1) is empty (=== 0)
+            if (r > 0 && board[r - 1][c] === 0) {
+                const cellEl = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+                cellEl.classList.add('shake');
+                setTimeout(() => cellEl.classList.remove('shake'), 300);
+                return; // Stop the click from registering
+            }
+
+            pendingMove = { r, c };
+            const factor1 = c + 1;
+            const factor2 = r + 1;
+
+            questionText.textContent = `Player ${currentPlayer}: What is ${factor2} x ${factor1}?`;
+            answerInput.value = '';
+            modalOverlay.style.display = 'flex';
+            answerInput.focus();
+        }
+
+        function checkAnswer() {
+            if (!pendingMove) return;
+
+            const { r, c } = pendingMove;
+            const factor1 = c + 1;
+            const factor2 = r + 1;
+            const correctAnswer = factor1 * factor2;
+            const userAnswer = parseInt(answerInput.value, 10);
+
+            modalOverlay.style.display = 'none';
+
+            if (userAnswer === correctAnswer) {
+                // Correct: place token
+                board[r][c] = currentPlayer;
+                const cellEl = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+                cellEl.classList.add('taken', currentPlayer === 1 ? 'p1' : 'p2');
+
+                if (checkWin(r, c)) {
+                    gameActive = false;
+                    statusEl.textContent = `Player ${currentPlayer} Wins!`;
+                    statusEl.className = currentPlayer === 1 ? 'p1-turn' : 'p2-turn';
+                    return;
+                }
+            } else {
+                // Incorrect: notify and lose turn
+                alert(`Incorrect! ${factor1} x ${factor2} = ${correctAnswer}. You lose your turn!`);
+            }
+
+            // Switch turn
+            currentPlayer = currentPlayer === 1 ? 2 : 1;
+            updateStatus();
+            pendingMove = null;
+        }
+
+        submitBtn.addEventListener('click', checkAnswer);
+        answerInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') checkAnswer();
+        });
+
+        // Win checking logic (4 in a row)
+        function checkWin(r, c) {
+            const directions = [
+                [[0, 1], [0, -1]], // Horizontal
+                [[1, 0], [-1, 0]], // Vertical
+                [[1, 1], [-1, -1]], // Diagonal /
+                [[1, -1], [-1, 1]]  // Diagonal \
+            ];
+
+            const player = board[r][c];
+
+            for (let dir of directions) {
+                let count = 1;
+                let winningCells = [{r, c}];
+
+                for (let vector of dir) {
+                    let step = 1;
+                    while (true) {
+                        const newR = r + (vector[0] * step);
+                        const newC = c + (vector[1] * step);
+
+                        if (newR >= 0 && newR < ROWS && newC >= 0 && newC < COLS && board[newR][newC] === player) {
+                            count++;
+                            winningCells.push({r: newR, c: newC});
+                            step++;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                if (count >= 4) {
+                    highlightWin(winningCells);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function highlightWin(cells) {
+            cells.forEach(pos => {
+                const el = document.querySelector(`.cell[data-r="${pos.r}"][data-c="${pos.c}"]`);
+                el.classList.add('win-line');
+            });
+        }
+
+        // Start game on load
+        initGame();
+    </script>
+</body>
+</html>
