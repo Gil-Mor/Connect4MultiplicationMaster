@@ -218,8 +218,8 @@
             <option value="pvp">2 Players</option>
         </select>
         <select id="difficulty-level" onchange="initGame();">
-            <option value="1">Level 1 (Silly)</option>
-            <option value="2">Level 2 (Easy)</option>
+            <option value="1">Level 1 (Pure Random)</option>
+            <option value="2">Level 2 (Opportunist - Won't block)</option>
             <option value="3" selected>Level 3 (Medium)</option>
             <option value="4">Level 4 (Hard)</option>
             <option value="5">Level 5 (Expert)</option>
@@ -324,10 +324,12 @@
             }
 
             pendingMove = { r, c };
-            const factor1 = c + 1;
-            const factor2 = r + 1;
 
-            questionText.textContent = `Player ${currentPlayer}: What is ${factor1} x ${factor2}?`;
+            // Format: Row x Col
+            const rowNum = r + 1;
+            const colNum = c + 1;
+
+            questionText.textContent = `Player ${currentPlayer}: What is ${rowNum} x ${colNum}?`;
             answerInput.value = '';
             modalOverlay.style.display = 'flex';
             answerInput.focus();
@@ -337,9 +339,9 @@
             if (!pendingMove) return;
 
             const { r, c } = pendingMove;
-            const factor1 = c + 1;
-            const factor2 = r + 1;
-            const correctAnswer = factor1 * factor2;
+            const rowNum = r + 1;
+            const colNum = c + 1;
+            const correctAnswer = rowNum * colNum;
             const userAnswer = parseInt(answerInput.value, 10);
 
             modalOverlay.style.display = 'none';
@@ -347,7 +349,7 @@
             if (userAnswer === correctAnswer) {
                 placePiece(r, c, currentPlayer);
             } else {
-                alert(`Incorrect! ${factor1} x ${factor2} = ${correctAnswer}. You lose your turn!`);
+                alert(`Incorrect! ${rowNum} x ${colNum} = ${correctAnswer}. You lose your turn!`);
                 advanceTurn();
             }
             pendingMove = null;
@@ -414,29 +416,43 @@
 
 
         // ==========================================
-        // AI LOGIC (MINIMAX)
+        // AI LOGIC
         // ==========================================
 
         function makeAIMove() {
             const level = parseInt(difficultySelect.value);
             let bestCol;
+            const validCols = getValidCols(board);
 
-            // Level 1: Silly (Pure Random)
             if (level === 1) {
-                const validCols = getValidCols(board);
+                // Level 1: Pure Random
                 bestCol = validCols[Math.floor(Math.random() * validCols.length)];
+            } else if (level === 2) {
+                // Level 2: Opportunist (Takes wins if available, otherwise random. Does not block).
+                bestCol = validCols[Math.floor(Math.random() * validCols.length)]; // Default random
+
+                for (let c of validCols) {
+                    let r = getNextOpenRow(board, c);
+                    let bCopy = copyBoard(board);
+                    bCopy[r][c] = 2; // AI piece
+                    if (checkWinData(bCopy, 2)) {
+                        bestCol = c; // Found a win, take it!
+                        break;
+                    }
+                }
             } else {
-                // Map levels 2-5 to Depth (2, 3, 4, 5)
-                const depth = level;
+                // Levels 3, 4, 5 map to Depths 2, 4, 6
+                const depths = {3: 2, 4: 4, 5: 6};
+                const depth = depths[level];
                 bestCol = minimax(board, depth, -Infinity, Infinity, true)[0];
             }
 
             const r = getNextOpenRow(board, bestCol);
 
-            // Educational touch: show math answer
-            const factor1 = bestCol + 1;
-            const factor2 = r + 1;
-            updateStatus(`Computer solved ${factor1} x ${factor2} = ${factor1 * factor2}!`);
+            // Educational touch: show math answer (Row x Col)
+            const rowNum = r + 1;
+            const colNum = bestCol + 1;
+            updateStatus(`Computer solved ${rowNum} x ${colNum} = ${rowNum * colNum}!`);
             statusEl.className = 'ai-turn';
 
             setTimeout(() => {
@@ -506,26 +522,22 @@
 
         function scorePosition(b, piece) {
             let score = 0;
-            // Center preference
             let centerArray = [];
             for (let r = 0; r < ROWS; r++) centerArray.push(b[r][Math.floor(COLS/2)]);
             score += centerArray.filter(p => p === piece).length * 3;
 
-            // Horizontal
             for (let r = 0; r < ROWS; r++) {
                 for (let c = 0; c < COLS - 3; c++) {
                     let window = [b[r][c], b[r][c+1], b[r][c+2], b[r][c+3]];
                     score += evaluateWindow(window, piece);
                 }
             }
-            // Vertical
             for (let c = 0; c < COLS; c++) {
                 for (let r = 0; r < ROWS - 3; r++) {
                     let window = [b[r][c], b[r+1][c], b[r+2][c], b[r+3][c]];
                     score += evaluateWindow(window, piece);
                 }
             }
-            // Diagonals
             for (let r = 0; r < ROWS - 3; r++) {
                 for (let c = 0; c < COLS - 3; c++) {
                     let window = [b[r][c], b[r+1][c+1], b[r+2][c+2], b[r+3][c+3]];
@@ -594,7 +606,6 @@
             }
         }
 
-        // Initialize game
         toggleDifficulty();
         initGame();
     </script>
