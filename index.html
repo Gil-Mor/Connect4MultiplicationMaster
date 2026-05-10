@@ -47,6 +47,7 @@
             align-items: center;
             flex-wrap: wrap;
             justify-content: center;
+            max-width: 900px;
         }
 
         select {
@@ -226,6 +227,10 @@
             <option value="4">Level 4 (Hard - Thinks ahead)</option>
             <option value="5">Level 5 (Expert - Grandmaster)</option>
         </select>
+        <select id="board-orientation" onchange="initGame();">
+            <option value="standard">Standard (1x1 Bottom Left)</option>
+            <option value="flipped">Flipped (10x10 Bottom Left)</option>
+        </select>
         <button id="reset-btn" onclick="initGame()">Restart Game</button>
     </div>
 
@@ -257,6 +262,13 @@
         const submitBtn = document.getElementById('submit-btn');
         const modeSelect = document.getElementById('game-mode');
         const difficultySelect = document.getElementById('difficulty-level');
+        const orientationSelect = document.getElementById('board-orientation');
+
+        // Helper to convert array index (0-9) to math factor (1-10 or 10-1)
+        function getFactor(index) {
+            const isFlipped = orientationSelect.value === 'flipped';
+            return isFlipped ? (10 - index) : (index + 1);
+        }
 
         function toggleDifficulty() {
             difficultySelect.style.display = modeSelect.value === 'pve' ? 'inline-block' : 'none';
@@ -275,7 +287,7 @@
             for (let r = ROWS - 1; r >= 0; r--) {
                 const rowLabel = document.createElement('div');
                 rowLabel.className = 'label';
-                rowLabel.textContent = r + 1;
+                rowLabel.textContent = getFactor(r); // Dynamic Label
                 boardEl.appendChild(rowLabel);
 
                 for (let c = 0; c < COLS; c++) {
@@ -292,7 +304,7 @@
             for (let c = 0; c < COLS; c++) {
                 const colLabel = document.createElement('div');
                 colLabel.className = 'label';
-                colLabel.textContent = c + 1;
+                colLabel.textContent = getFactor(c); // Dynamic Label
                 boardEl.appendChild(colLabel);
             }
         }
@@ -317,7 +329,7 @@
         function handleCellClick(r, c) {
             if (!gameActive || isAILocked || board[r][c] !== 0) return;
 
-            // Gravity Check
+            // Gravity Check (Internal logic uses index, not factor)
             if (r > 0 && board[r - 1][c] === 0) {
                 const cellEl = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
                 cellEl.classList.add('shake');
@@ -327,9 +339,9 @@
 
             pendingMove = { r, c };
 
-            // Format: Row x Col
-            const rowNum = r + 1;
-            const colNum = c + 1;
+            // Format: Row x Col using dynamic factors
+            const rowNum = getFactor(r);
+            const colNum = getFactor(c);
 
             questionText.textContent = `Player ${currentPlayer}: What is ${rowNum} x ${colNum}?`;
             answerInput.value = '';
@@ -341,8 +353,8 @@
             if (!pendingMove) return;
 
             const { r, c } = pendingMove;
-            const rowNum = r + 1;
-            const colNum = c + 1;
+            const rowNum = getFactor(r);
+            const colNum = getFactor(c);
             const correctAnswer = rowNum * colNum;
             const userAnswer = parseInt(answerInput.value, 10);
 
@@ -499,8 +511,8 @@
             const r = getNextOpenRow(board, bestCol);
 
             // Educational touch: show math answer (Row x Col)
-            const rowNum = r + 1;
-            const colNum = bestCol + 1;
+            const rowNum = getFactor(r);
+            const colNum = getFactor(bestCol);
             updateStatus(`Computer solved ${rowNum} x ${colNum} = ${rowNum * colNum}!`);
             statusEl.className = 'ai-turn';
 
